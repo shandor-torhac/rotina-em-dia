@@ -1,20 +1,54 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 type Task = {
-  id: number;
+  id: string;
   title: string;
   description: string;
   completed: boolean;
+  category: string;
 };
 
 function Dashboard() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [category, setCategory] = useState("Sem categoria");
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+
+  const [tasks, setTasks] = useState<Task[]>(() => {
+    const savedTasks = localStorage.getItem("rotina-em-dia-tasks");
+
+    if (!savedTasks) {
+      return [];
+    }
+
+    try {
+      return JSON.parse(savedTasks) as Task[];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("rotina-em-dia-tasks", JSON.stringify(tasks));
+  }, [tasks]);
 
   const completedTasks = tasks.filter((task) => task.completed).length;
   const pendingTasks = tasks.length - completedTasks;
+
+  function handleEditTask(id: string) {
+    const taskToEdit = tasks.find((task) => task.id === id);
+
+    if (!taskToEdit) {
+      return;
+    }
+
+    setTitle(taskToEdit.title);
+    setDescription(taskToEdit.description);
+    setCategory(taskToEdit.category);
+    setEditingTaskId(taskToEdit.id);
+    setIsFormOpen(true);
+  }
 
   function handleAddTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -23,21 +57,38 @@ function Dashboard() {
       return;
     }
 
-    const newTask: Task = {
-      id: Date.now(),
-      title: title.trim(),
-      description: description.trim(),
-      completed: false,
-    };
+    if (editingTaskId) {
+      setTasks(
+        tasks.map((task) =>
+          task.id === editingTaskId
+            ? {
+                ...task,
+                title: title.trim(),
+                description: description.trim(),
+                category: category,
+              }
+            : task,
+        ),
+      );
+    } else {
+      const newTask: Task = {
+        id: crypto.randomUUID(),
+        title: title.trim(),
+        description: description.trim(),
+        completed: false,
+        category: category,
+      };
 
-    setTasks([...tasks, newTask]);
+      setTasks([...tasks, newTask]);
+    }
 
     setTitle("");
     setDescription("");
+    setEditingTaskId(null);
     setIsFormOpen(false);
   }
 
-  function handleToggleTask(id: number) {
+  function handleToggleTask(id: string) {
     setTasks(
       tasks.map((task) =>
         task.id === id ? { ...task, completed: !task.completed } : task,
@@ -45,8 +96,22 @@ function Dashboard() {
     );
   }
 
-  function handleDeleteTask(id: number) {
+  function handleDeleteTask(id: string) {
     setTasks(tasks.filter((task) => task.id !== id));
+  }
+
+  function handleOpenNewTask() {
+    setEditingTaskId(null);
+    setTitle("");
+    setDescription("");
+    setIsFormOpen(true);
+  }
+
+  function handleCancelForm() {
+    setEditingTaskId(null);
+    setTitle("");
+    setDescription("");
+    setIsFormOpen(false);
   }
 
   return (
@@ -58,17 +123,14 @@ function Dashboard() {
           <p>Organize suas prioridades e acompanhe sua evolução.</p>
         </div>
 
-        <button
-          className="add-task-button"
-          onClick={() => setIsFormOpen(!isFormOpen)}
-        >
+        <button className="add-task-button" onClick={handleOpenNewTask}>
           + Nova tarefa
         </button>
       </header>
 
       {isFormOpen && (
         <section className="tasks-section task-form-section">
-          <h2>Nova tarefa</h2>
+          <h2>{editingTaskId ? "Editar tarefa" : "Nova tarefa"}</h2>
 
           <form onSubmit={handleAddTask}>
             <label htmlFor="task-title">Nome da atividade</label>
@@ -90,9 +152,35 @@ function Dashboard() {
               onChange={(event) => setDescription(event.target.value)}
             />
 
-            <button type="submit" className="add-task-button">
-              Salvar tarefa
-            </button>
+            <label htmlFor="task-category">Categoria</label>
+
+            <select
+              id="task-category"
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+            >
+              <option value="Sem categoria">Sem categoria</option>
+              <option value="Trabalho">Trabalho</option>
+              <option value="Estudos">Estudos</option>
+              <option value="Pessoal">Pessoal</option>
+              <option value="Família">Família</option>
+              <option value="Saúde">Saúde</option>
+              <option value="Finanças">Finanças</option>
+            </select>
+
+            <div className="task-actions">
+              <button type="submit" className="add-task-button">
+                {editingTaskId ? "Salvar alterações" : "Salvar tarefa"}
+              </button>
+
+              <button
+                type="button"
+                className="delete-button"
+                onClick={handleCancelForm}
+              >
+                Cancelar
+              </button>
+            </div>
           </form>
         </section>
       )}
@@ -145,12 +233,20 @@ function Dashboard() {
                 <div className="task-info">
                   <strong>{task.title}</strong>
                   <p>{task.description || "Sem descrição"}</p>
+                  <span className="task-category">{task.category}</span>
                   <span className="task-status">
                     {task.completed ? "Concluída" : "Pendente"}
                   </span>
                 </div>
 
                 <div className="task-actions">
+                  <button
+                    className="edit-button"
+                    onClick={() => handleEditTask(task.id)}
+                  >
+                    Editar
+                  </button>
+
                   <button
                     className="complete-button"
                     onClick={() => handleToggleTask(task.id)}
